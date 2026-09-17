@@ -3,7 +3,7 @@
 
   const ALLOWED_HOSTS = new Set(["vod.sooplive.com", "vod.sooplive.co.kr"]);
   const URL_PATTERN = /https?:\/\/[^\s<>"']+/gi;
-  const RANGE_PATTERN = /(?<!\d:)(\d{1,3}:\d{2}(?::\d{2})?)\s*(?:~|～|－|–|—|-)\s*(\d{1,3}:\d{2}(?::\d{2})?)(?!:\d)/;
+  const RANGE_PATTERN = /(?:\(([^)\r\n]*)\)\s*)?\[\s*(\d{1,3}:\d{2}(?::\d{2})?)\s*\]\s*~\s*\[\s*(\d{1,3}:\d{2}(?::\d{2})?)\s*\]/;
 
   function parseTime(value) {
     const parts = String(value).split(":").map(Number);
@@ -13,11 +13,19 @@
   }
 
   function parseRange(text) {
-    const match = String(text || "").match(RANGE_PATTERN);
-    if (!match) return null;
-    const start = parseTime(match[1]);
-    const end = parseTime(match[2]);
-    return start !== null && end !== null && start < end ? { start, end } : null;
+    const range = parseRanges(text)[0];
+    return range && !range.error ? range : null;
+  }
+
+  function parseRanges(text) {
+    return [...String(text || "").matchAll(new RegExp(RANGE_PATTERN.source, "g"))].map((match) => {
+      const title = match[1]?.trim() || "";
+      const start = parseTime(match[2]);
+      const end = parseTime(match[3]);
+      return start !== null && end !== null && start < end
+        ? { title, start, end }
+        : { title, start: null, end: null, error: "시간 형식 또는 시작·종료 순서가 잘못됐습니다." };
+    });
   }
 
   function hasRangeSyntax(text) {
@@ -72,7 +80,16 @@
     return `${item.videoKey}|${item.start ?? ""}|${item.end ?? ""}`;
   }
 
-  const api = { extractSoopUrls, formatTime, hasRangeSyntax, itemKey, parseRange, parseSoopUrl, parseTime };
+  function activeRangeIndex(items, currentTime, preferredIndex, videoKey) {
+    if (!Number.isFinite(currentTime)) return -1;
+    const contains = (item) => item?.videoKey === videoKey && item.status !== "error"
+      && Number.isFinite(item.start) && Number.isFinite(item.end)
+      && item.start <= currentTime && currentTime < item.end;
+    if (Number.isInteger(preferredIndex) && contains(items[preferredIndex])) return preferredIndex;
+    return items.findIndex(contains);
+  }
+
+  const api = { activeRangeIndex, extractSoopUrls, formatTime, hasRangeSyntax, itemKey, parseRange, parseRanges, parseSoopUrl, parseTime };
   root.GuganPickCore = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(globalThis);

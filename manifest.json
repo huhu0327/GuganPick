@@ -10,7 +10,8 @@
     "https://vod.sooplive.co.kr/*"
   ],
   "action": {
-    "default_title": "SOOP 구간 목록 열기"
+    "default_title": "SOOP 구간 재생 설정",
+    "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js"
@@ -22,7 +23,7 @@
         "https://vod.sooplive.com/*",
         "https://vod.sooplive.co.kr/*"
       ],
-      "js": ["core.js", "content.js"],
+      "js": ["core.js", "settings.js", "content.js"],
       "run_at": "document_idle",
       "all_frames": true
     }

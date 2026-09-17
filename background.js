@@ -2,11 +2,6 @@
 
 importScripts("core.js");
 
-chrome.action.onClicked.addListener((tab) => {
-  if (!tab.id) return;
-  chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_PANEL" }).catch(() => undefined);
-});
-
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message?.type !== "OPEN_ITEM") return;
   const parsed = GuganPickCore.parseSoopUrl(message.url);

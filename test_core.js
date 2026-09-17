@@ -6,9 +6,20 @@ const core = require("./core.js");
 assert.equal(core.parseTime("03:23"), 203);
 assert.equal(core.parseTime("01:03:23"), 3803);
 assert.equal(core.parseTime("03:99"), null);
-assert.deepEqual(core.parseRange("추천 03:23 ~ 04:00 구간"), { start: 203, end: 240 });
-assert.equal(core.parseRange("04:00 ~ 03:23"), null);
-assert.equal(core.hasRangeSyntax("04:00 ~ 03:23"), true);
+assert.deepEqual(core.parseRange("(추천) [ 03:23 ] ~ [ 04:00 ]"), { title: "추천", start: 203, end: 240 });
+assert.deepEqual(core.parseRange("(추천) [03:23] ~ [04:00]"), { title: "추천", start: 203, end: 240 });
+assert.deepEqual(core.parseRange("[01:03:23] ~ [01:04:00]"), { title: "", start: 3803, end: 3840 });
+assert.equal(core.parseRange("[04:00] ~ [03:23]"), null);
+assert.equal(core.parseRange("추천 03:23 ~ 04:00 구간"), null);
+assert.deepEqual(core.parseRanges("(테스트1) [ 00:01 ] ~ [ 00:10 ]\n(테스트2) [ 00:11 ] ~ [ 00:20 ]"), [
+  { title: "테스트1", start: 1, end: 10 },
+  { title: "테스트2", start: 11, end: 20 }
+]);
+assert.deepEqual(core.parseRanges("(오류) [ 00:20 ] ~ [ 00:10 ] (정상) [ 00:01 ] ~ [ 00:02 ]"), [
+  { title: "오류", start: null, end: null, error: "시간 형식 또는 시작·종료 순서가 잘못됐습니다." },
+  { title: "정상", start: 1, end: 2 }
+]);
+assert.equal(core.hasRangeSyntax("[04:00] ~ [03:23]"), true);
 assert.equal(core.hasRangeSyntax("시간 없음"), false);
 
 const catchUrl = core.parseSoopUrl("https://vod.sooplive.com/player/207345179/catch");
@@ -26,5 +37,16 @@ assert.equal(extracted.length, 1);
 assert.equal(extracted[0].videoKey, "123");
 assert.equal(core.itemKey({ videoKey: "123", start: 10, end: 20 }), "123|10|20");
 assert.equal(core.itemKey({ videoKey: "123", start: 20, end: 30 }), "123|20|30");
+
+const ranges = [
+  { videoKey: "123", start: 1, end: 10, status: "waiting" },
+  { videoKey: "123", start: 5, end: 15, status: "waiting" },
+  { videoKey: "456", start: 1, end: 10, status: "waiting" }
+];
+assert.equal(core.activeRangeIndex(ranges, 6, -1, "123"), 0);
+assert.equal(core.activeRangeIndex(ranges, 6, 1, "123"), 1);
+assert.equal(core.activeRangeIndex(ranges, 10, 0, "123"), 1);
+assert.equal(core.activeRangeIndex(ranges, 15, 1, "123"), -1);
+assert.equal(core.activeRangeIndex([{ videoKey: "123", start: 1, end: 10, status: "error" }], 5, 0, "123"), -1);
 
 console.log("core tests passed");

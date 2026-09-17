@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SOOP 구간 재생 설정</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">SOOP 구간 재생</span>
+    <span class="ready"><span aria-hidden="true"></span>READY</span>
+  </header>
+
+  <main>
+    <div class="intro">
+      <h1>재생 설정</h1>
+      <p>구간 목록을 열기 전에 시청 흐름을 정합니다.</p>
+    </div>
+
+    <form id="settings-form">
+      <section class="setting-group" aria-labelledby="flow-title">
+        <h2 id="flow-title">재생 흐름</h2>
+
+        <label class="setting-row" for="auto-advance">
+          <span>
+            <strong>구간 자동 넘기기</strong>
+            <small>종료 시 다음 항목을 바로 재생합니다.</small>
+          </span>
+          <input id="auto-advance" name="autoAdvance" type="checkbox" role="switch">
+        </label>
+
+        <label class="setting-row" for="pause-at-end">
+          <span>
+            <strong>구간 끝에서 멈추기</strong>
+            <small>자동 넘기기가 꺼진 경우 종료점에서 멈춥니다.</small>
+          </span>
+          <input id="pause-at-end" name="pauseAtEnd" type="checkbox" role="switch">
+        </label>
+
+        <label class="setting-row" for="open-new-tab">
+          <span>
+            <strong>새 탭에서 영상 열기</strong>
+            <small>끄면 현재 탭에서 SOOP으로 이동합니다.</small>
+          </span>
+          <input id="open-new-tab" name="openInNewTab" type="checkbox" role="switch">
+        </label>
+
+        <label class="setting-row" for="auto-open-panel">
+          <span>
+            <strong>SOOP에서 패널 자동 열기</strong>
+            <small>재생 페이지 이동 후 목록을 바로 표시합니다.</small>
+          </span>
+          <input id="auto-open-panel" name="autoOpenPanel" type="checkbox" role="switch">
+        </label>
+      </section>
+
+      <section class="setting-group" aria-labelledby="collect-title">
+        <h2 id="collect-title">목록 수집</h2>
+        <label class="select-row" for="scan-scope">
+          <span>
+            <strong>기본 검색 범위</strong>
+            <small>현재 로드된 영역만 검색합니다.</small>
+          </span>
+          <select id="scan-scope" name="scanScope">
+            <option value="both">본문 + 댓글</option>
+            <option value="body">본문만</option>
+            <option value="comments">댓글만</option>
+          </select>
+        </label>
+      </section>
+    </form>
+  </main>
+
+  <footer class="action-bar">
+    <button id="open-panel" type="button">
+      <span class="button-label">현재 페이지 패널 열기</span>
+    </button>
+    <p id="status" role="status" aria-live="polite">변경 사항은 자동 저장됩니다.</p>
+  </footer>
+
+  <script src="settings.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

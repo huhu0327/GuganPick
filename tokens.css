@@ -1,0 +1,37 @@
+:root {
+  --color-paper: oklch(98.5% 0.004 250);
+  --color-paper-raised: oklch(100% 0 0);
+  --color-paper-hover: oklch(96.5% 0.008 250);
+  --color-ink: oklch(24% 0.02 258);
+  --color-ink-soft: oklch(38% 0.018 257);
+  --color-muted: oklch(43% 0.014 255);
+  --color-rule: oklch(89% 0.012 252);
+  --color-rule-strong: oklch(76% 0.024 252);
+  --color-accent: oklch(48% 0.2 256);
+  --color-accent-hover: oklch(43% 0.2 256);
+  --color-accent-ink: oklch(100% 0 0);
+  --color-focus: oklch(12% 0.05 258);
+  --color-success: oklch(40% 0.13 150);
+  --color-error: oklch(45% 0.19 25);
+  --font-display: Bahnschrift, "Arial Narrow", sans-serif;
+  --font-body: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Code", Consolas, monospace;
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 14px;
+  --text-lg: 18px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.32, 0, 0.67, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --rule-thin: 1px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+}
