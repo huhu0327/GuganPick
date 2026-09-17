@@ -106,6 +106,7 @@
       .tools select { flex: 1; }
       .controls button { flex: 1; }
       ol { margin: 0; padding: 0 12px 4px; list-style: none; }
+      .segment-list { padding-top: 12px; }
       li { margin: 0 0 8px; padding: 10px; border: 1px solid #30363d; border-radius: 10px; background: #191e24; }
       li.active { border-color: #21b66f; background: #123323; }
       .row { display: flex; align-items: start; gap: 8px; }
@@ -113,6 +114,7 @@
       .title { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
       .meta { margin-top: 3px; color: #aeb7c2; font-size: 12px; }
       .state { color: #61d897; }
+      .segment-list li:not(.active) .state { display: none; }
       .error { color: #ff8989; }
       .current { padding: 12px; }
       .empty, footer { padding: 12px; color: #aeb7c2; }
@@ -178,14 +180,14 @@
     if (isSoop) {
       if (!currentItems.length) panel.append(create("div", { className: "empty", text: note || "발견한 SOOP 구간이 없습니다." }));
       else {
-        const list = create("ol");
+        const list = create("ol", { className: "segment-list" });
         let segmentNumber = 0;
         const highlighted = highlightedIndex();
         currentItems.forEach(({ item, index }) => {
           const validRange = item.status !== "error" && Number.isFinite(item.start) && Number.isFinite(item.end);
           const number = validRange ? `${++segmentNumber}. ` : "";
-          const details = [create("div", { className: "title", text: `${number}${itemText(item)}` })];
-          details.push(create("div", { className: "meta", text: `${item.source}${item.author ? ` · ${item.author}` : ""}` }));
+          const details = [create("div", { className: "title", text: `${number}${item.title || ""}`.trim() })];
+          if (validRange) details.push(create("div", { className: "meta", text: timeText(item) }));
           details.push(create("div", { className: item.status === "error" ? "meta error" : "meta state", text: statusText(item) }));
           const play = create("button", { type: "button", text: "재생", onclick: () => playItem(index), disabled: item.status === "error" ? "" : null });
           list.append(create("li", { className: index === highlighted ? "active" : "", "data-item-index": index }, [
