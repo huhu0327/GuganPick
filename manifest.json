@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "SOOP 구간 재생",
+  "version": "0.1.0",
+  "description": "네이버 카페의 SOOP 링크와 시간 구간을 모아 원본 플레이어에서 재생합니다.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://cafe.naver.com/*",
+    "https://vod.sooplive.com/*",
+    "https://vod.sooplive.co.kr/*"
+  ],
+  "action": {
+    "default_title": "SOOP 구간 목록 열기"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://cafe.naver.com/*",
+        "https://vod.sooplive.com/*",
+        "https://vod.sooplive.co.kr/*"
+      ],
+      "js": ["core.js", "content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}
