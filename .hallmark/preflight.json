@@ -1,9 +1,0 @@
-{
-  "date": "2026-09-17",
-  "framework": "Chrome Manifest V3, vanilla HTML/CSS/JavaScript",
-  "fonts": "system UI in existing injected panel",
-  "palette": "existing injected panel uses a dark neutral palette",
-  "motion": "no motion library",
-  "spacing": "no existing token scale",
-  "preserved": ["no build step", "no external dependencies", "existing page panel"]
-}
