@@ -22,20 +22,28 @@
       <section class="setting-group" aria-labelledby="flow-title">
         <h2 id="flow-title">재생 흐름</h2>
 
-        <label class="setting-row" for="auto-advance">
+        <label class="setting-row" for="auto-play-first">
           <span>
-            <strong>구간 자동 넘기기</strong>
-            <small>종료 시 다음 항목을 바로 재생합니다.</small>
+            <strong>첫 구간 자동 재생</strong>
+            <small>SOOP 페이지에서 첫 구간을 바로 재생합니다.</small>
           </span>
-          <input id="auto-advance" name="autoAdvance" type="checkbox" role="switch">
+          <input id="auto-play-first" name="autoPlayFirst" type="checkbox" role="switch">
         </label>
 
         <label class="setting-row" for="pause-at-end">
           <span>
-            <strong>구간 끝에서 멈추기</strong>
-            <small>자동 넘기기가 꺼진 경우 종료점에서 멈춥니다.</small>
+            <strong>구간마다 멈추기</strong>
+            <small>재생한 구간의 종료점에서 멈춥니다.</small>
           </span>
           <input id="pause-at-end" name="pauseAtEnd" type="checkbox" role="switch">
+        </label>
+
+        <label class="setting-row" for="pause-at-last">
+          <span>
+            <strong>마지막 구간 멈추기</strong>
+            <small>마지막 구간의 종료점에서 멈춥니다.</small>
+          </span>
+          <input id="pause-at-last" name="pauseAtLast" type="checkbox" role="switch">
         </label>
 
         <label class="setting-row" for="open-new-tab">
@@ -55,20 +63,6 @@
         </label>
       </section>
 
-      <section class="setting-group" aria-labelledby="collect-title">
-        <h2 id="collect-title">목록 수집</h2>
-        <label class="select-row" for="scan-scope">
-          <span>
-            <strong>기본 검색 범위</strong>
-            <small>현재 로드된 영역만 검색합니다.</small>
-          </span>
-          <select id="scan-scope" name="scanScope">
-            <option value="both">본문 + 댓글</option>
-            <option value="body">본문만</option>
-            <option value="comments">댓글만</option>
-          </select>
-        </label>
-      </section>
     </form>
   </main>
 

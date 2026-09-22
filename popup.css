@@ -24,7 +24,6 @@ body {
 }
 
 button,
-select,
 input {
   font: inherit;
 }
@@ -106,8 +105,7 @@ h1 {
   text-transform: uppercase;
 }
 
-.setting-row,
-.select-row {
+.setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -117,19 +115,16 @@ h1 {
   border-bottom: var(--rule-thin) solid var(--color-rule);
 }
 
-.setting-row > span,
-.select-row > span {
+.setting-row > span {
   min-width: 0;
 }
 
-.setting-row strong,
-.select-row strong {
+.setting-row strong {
   display: block;
   font-weight: 600;
 }
 
-.setting-row small,
-.select-row small {
+.setting-row small {
   display: block;
   margin-top: var(--space-2xs);
   color: var(--color-ink-soft);
@@ -175,7 +170,6 @@ input[role="switch"]:checked::after {
 }
 
 input[role="switch"]:focus-visible,
-select:focus-visible,
 button:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
@@ -190,27 +184,9 @@ input[role="switch"]:checked:active::after {
 }
 
 input[role="switch"]:disabled,
-select:disabled,
 button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
-}
-
-select {
-  flex: 0 0 auto;
-  min-height: 44px;
-  padding: 0 var(--space-sm);
-  border: var(--rule-thin) solid var(--color-rule-strong);
-  border-radius: var(--radius-sm);
-  outline: 2px solid transparent;
-  outline-offset: 1px;
-  background: var(--color-paper-raised);
-  color: var(--color-ink);
-  cursor: pointer;
-}
-
-select:active {
-  background: var(--color-paper-hover);
 }
 
 .action-bar {
@@ -271,8 +247,7 @@ button[data-state="success"] {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  input[role="switch"]:hover,
-  select:hover {
+  input[role="switch"]:hover {
     background: var(--color-paper-hover);
   }
 

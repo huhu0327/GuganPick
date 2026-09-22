@@ -7,7 +7,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   const parsed = GuganPickCore.parseSoopUrl(message.url);
   if (!parsed || !Number.isInteger(message.index) || message.index < 0) return;
 
-  chrome.storage.local.set({ activeIndex: message.index }).then(() => {
+  chrome.storage.local.set({ activeIndex: message.index, activeVideoKey: parsed.videoKey }).then(() => {
     if (message.sameTab && sender.tab?.id) chrome.tabs.update(sender.tab.id, { url: parsed.url });
     else chrome.tabs.create({ url: parsed.url });
   });

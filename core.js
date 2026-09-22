@@ -43,9 +43,11 @@
       const match = url.pathname.match(/^\/player\/(\d+)(\/catch)?\/?$/i);
       if (!ALLOWED_HOSTS.has(host) || !match || !/^https?:$/.test(url.protocol)) return null;
 
-      const changeSecond = url.searchParams.get("change_second");
-      const start = changeSecond !== null && Number.isFinite(Number(changeSecond)) && Number(changeSecond) >= 0
-        ? Number(changeSecond)
+      const startValue = url.searchParams.has("change_second")
+        ? url.searchParams.get("change_second")
+        : url.searchParams.get("start");
+      const start = startValue !== null && Number.isFinite(Number(startValue)) && Number(startValue) >= 0
+        ? Number(startValue)
         : null;
 
       url.hash = "";
@@ -80,16 +82,50 @@
     return `${item.videoKey}|${item.start ?? ""}|${item.end ?? ""}`;
   }
 
-  function activeRangeIndex(items, currentTime, preferredIndex, videoKey) {
-    if (!Number.isFinite(currentTime)) return -1;
-    const contains = (item) => item?.videoKey === videoKey && item.status !== "error"
-      && Number.isFinite(item.start) && Number.isFinite(item.end)
-      && item.start <= currentTime && currentTime < item.end;
-    if (Number.isInteger(preferredIndex) && contains(items[preferredIndex])) return preferredIndex;
-    return items.findIndex(contains);
+  function sameSoopAuthor(publisher, commenter) {
+    const identity = (author) => {
+      const value = typeof author === "string" ? { name: author } : author || {};
+      const text = String(value.name || "").replace(/\s+/g, " ").trim();
+      const match = text.match(/^(.*?)\s*\(\s*([^()]+?)\s*\)$/);
+      return {
+        id: String(value.id || match?.[2] || "").trim().toLowerCase(),
+        name: String(match?.[1] || text).trim().toLowerCase()
+      };
+    };
+    const left = identity(publisher);
+    const right = identity(commenter);
+    if (left.id && right.id) return left.id === right.id;
+    return Boolean(left.name && left.name === right.name);
   }
 
-  const api = { activeRangeIndex, extractSoopUrls, formatTime, hasRangeSyntax, itemKey, parseRange, parseRanges, parseSoopUrl, parseTime };
+  function hasWatchedMarker(text) {
+    return String(text || "").includes("[봤]");
+  }
+
+  function isPlayableRange(item) {
+    return Boolean(item && item.status !== "error" && !item.watched
+      && Number.isFinite(item.start) && Number.isFinite(item.end));
+  }
+
+  function nextPlayableIndex(entries, currentIndex) {
+    const position = entries.findIndex((entry) => entry.index === currentIndex);
+    return entries.slice(position + 1).find((entry) => isPlayableRange(entry.item))?.index ?? -1;
+  }
+
+  function activeRangeIndex(items, currentTime, preferredIndex, videoKey) {
+    if (!Number.isFinite(currentTime)) return -1;
+    const preferred = items[preferredIndex];
+    const contains = (item) => item?.videoKey === videoKey && isPlayableRange(item)
+      && item.start <= currentTime && currentTime < item.end;
+    if (Number.isInteger(preferredIndex) && contains(items[preferredIndex])) return preferredIndex;
+    if (preferred?.videoKey === videoKey && preferred.status === "completed"
+      && Number.isFinite(preferred.end) && currentTime >= preferred.end - 0.05) return preferredIndex;
+    const currentIndex = items.findIndex(contains);
+    if (currentIndex >= 0) return currentIndex;
+    return -1;
+  }
+
+  const api = { activeRangeIndex, extractSoopUrls, formatTime, hasRangeSyntax, hasWatchedMarker, isPlayableRange, itemKey, nextPlayableIndex, parseRange, parseRanges, parseSoopUrl, parseTime, sameSoopAuthor };
   root.GuganPickCore = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(globalThis);

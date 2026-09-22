@@ -2,8 +2,9 @@
   "use strict";
 
   const DEFAULTS = Object.freeze({
-    autoAdvance: false,
-    pauseAtEnd: false,
+    autoPlayFirst: true,
+    pauseAtEnd: true,
+    pauseAtLast: true,
     scanScope: "both",
     openInNewTab: true,
     autoOpenPanel: true
@@ -12,21 +13,22 @@
 
   function normalize(value = {}) {
     return {
-      autoAdvance: value.autoAdvance === true,
-      pauseAtEnd: value.pauseAtEnd === true,
+      autoPlayFirst: value.autoPlayFirst === undefined ? DEFAULTS.autoPlayFirst : value.autoPlayFirst === true,
+      pauseAtEnd: value.pauseAtEnd === undefined ? DEFAULTS.pauseAtEnd : value.pauseAtEnd === true,
+      pauseAtLast: value.pauseAtLast !== false,
       scanScope: SCOPES.has(value.scanScope) ? value.scanScope : DEFAULTS.scanScope,
       openInNewTab: value.openInNewTab !== false,
       autoOpenPanel: value.autoOpenPanel !== false
     };
   }
 
-  function endAction(settings, hasNext) {
+  function stopAt(settings, itemEnd, lastEnd) {
     const value = normalize(settings);
-    if (value.autoAdvance) return hasNext ? "next" : "pause";
-    return value.pauseAtEnd ? "pause" : "continue";
+    if (value.pauseAtEnd) return itemEnd;
+    return value.pauseAtLast ? lastEnd : null;
   }
 
-  const api = { DEFAULTS, endAction, normalize };
+  const api = { DEFAULTS, normalize, stopAt };
   root.GuganPickSettings = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(globalThis);

@@ -23,9 +23,12 @@
   let scope = "both";
   let settings = settingsApi.normalize();
   let mediaCleanup = () => {};
+  let promptCleanup = () => {};
   let highlightCleanup = () => {};
+  let renderTimer = 0;
   let playerToken = 0;
   let commentFingerprint = null;
+  let autoPlayedVideoKey = null;
 
   const $ = (selector) => shadow?.querySelector(selector);
 
@@ -46,6 +49,39 @@
     return item.error || STATUS[item.status] || STATUS.waiting;
   }
 
+  function showNextPrompt(onNext) {
+    promptCleanup();
+    const prompt = document.createElement("div");
+    prompt.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;pointer-events:none";
+    const root = prompt.attachShadow({ mode: "open" });
+    const next = create("button", { type: "button", text: "재생" });
+    const close = create("button", { type: "button", text: "취소" });
+    root.append(create("style", { text: `
+      section { min-width: 240px; padding: 18px; border: 1px solid #46505a; border-radius: 12px; background: #111418ee; color: #f4f6f8; box-shadow: 0 12px 40px #000a; text-align: center; font: 14px/1.45 system-ui, sans-serif; pointer-events: auto; }
+      strong { display: block; margin-bottom: 14px; }
+      div { display: flex; gap: 8px; }
+      button { flex: 1; min-height: 44px; padding: 8px 12px; border: 1px solid #46505a; border-radius: 8px; background: #222830; color: inherit; font: inherit; cursor: pointer; }
+      button:first-child { border-color: #168f51; background: #087c3f; }
+    ` }), create("section", { role: "dialog", "aria-modal": "true", "aria-label": "다음 구간 재생 확인" }, [
+      create("strong", { text: "다음 구간을 재생할까요?" }),
+      create("div", {}, [next, close])
+    ]));
+    const dismiss = () => {
+      prompt.remove();
+      document.removeEventListener("keydown", onKeydown);
+      promptCleanup = () => {};
+    };
+    const onKeydown = (event) => {
+      if (event.key === "Escape") dismiss();
+    };
+    next.addEventListener("click", () => { dismiss(); onNext(); });
+    close.addEventListener("click", dismiss);
+    (document.fullscreenElement || document.documentElement).append(prompt);
+    promptCleanup = dismiss;
+    document.addEventListener("keydown", onKeydown);
+    next.focus();
+  }
+
   function timeText(item) {
     if (item.end !== null) return `(${core.formatTime(item.start)}) ~ (${core.formatTime(item.end)})`;
     if (item.start !== null) return `${core.formatTime(item.start)}부터`;
@@ -56,19 +92,56 @@
     return `${item.title ? `${item.title} ` : ""}${timeText(item)}`;
   }
 
+  function currentSoopItems() {
+    const videoKey = isSoop ? core.parseSoopUrl(location.href)?.videoKey : null;
+    return items.map((item, index) => ({ item, index }))
+      .filter(({ item }) => item.videoKey === videoKey && item.source === "SOOP 댓글");
+  }
+
   function highlightedIndex() {
     const video = currentVideo();
     const current = core.parseSoopUrl(location.href);
     const ad = document.querySelector("#adVideo");
     if (!video || !current || (ad && !ad.paused && !ad.ended && ad.readyState >= 2)) return -1;
-    return core.activeRangeIndex(items, video.currentTime, activeIndex, current.videoKey);
+    const currentItems = currentSoopItems();
+    const preferred = currentItems.findIndex(({ index }) => index === activeIndex);
+    const highlighted = core.activeRangeIndex(currentItems.map(({ item }) => item), video.currentTime, preferred, current.videoKey);
+    return highlighted < 0 ? -1 : currentItems[highlighted].index;
   }
 
   function updateHighlight() {
+    const video = currentVideo();
+    const selected = items[activeIndex];
+    if (video && selected?.status !== "completed" && Number.isFinite(selected?.end)
+      && video.currentTime >= selected.end - 0.05) void saveStatus(activeIndex, "completed");
     const highlighted = highlightedIndex();
+    if (highlighted >= 0 && highlighted !== activeIndex) {
+      activeIndex = highlighted;
+      void chrome.storage.local.set({ activeIndex, activeVideoKey: core.parseSoopUrl(location.href)?.videoKey || null });
+      if (items[highlighted]?.status !== "completed") {
+        void saveStatus(highlighted, currentVideo()?.paused ? "paused" : "playing");
+      }
+    }
     shadow?.querySelectorAll("[data-item-index]").forEach((row) => {
-      row.classList.toggle("active", Number(row.getAttribute("data-item-index")) === highlighted);
+      const active = Number(row.getAttribute("data-item-index")) === highlighted;
+      row.classList.toggle("active", active);
+      if (active) {
+        const state = row.querySelector(".state");
+        if (state) state.textContent = statusText(items[highlighted]);
+      }
     });
+    const toggle = shadow?.querySelector("[data-playback-toggle]");
+    if (toggle) toggle.textContent = currentVideo()?.paused === false ? "일시정지" : "이어서 재생";
+  }
+
+  function syncMediaStatus(status) {
+    const index = highlightedIndex();
+    const video = currentVideo();
+    const item = items[index];
+    const completedAtEnd = item?.status === "completed"
+      && item.end !== null && video?.currentTime >= item.end - 0.05;
+    if (index >= 0 && !completedAtEnd) void saveStatus(index, status);
+    updateHighlight();
   }
 
   function watchHighlight() {
@@ -76,14 +149,27 @@
     const video = currentVideo();
     const ad = document.querySelector("#adVideo");
     if (!video) return;
-    const events = ["timeupdate", "seeked", "loadedmetadata"];
-    events.forEach((event) => video.addEventListener(event, updateHighlight));
-    ["play", "pause", "ended"].forEach((event) => ad?.addEventListener(event, updateHighlight));
+    const syncCurrentStatus = () => syncMediaStatus(video.paused ? "paused" : "playing");
+    const onPlaying = () => syncMediaStatus("playing");
+    const onWaiting = () => syncMediaStatus("preparing");
+    const onPause = () => syncMediaStatus("paused");
+    video.addEventListener("timeupdate", updateHighlight);
+    video.addEventListener("seeked", updateHighlight);
+    video.addEventListener("loadedmetadata", syncCurrentStatus);
+    video.addEventListener("playing", onPlaying);
+    video.addEventListener("waiting", onWaiting);
+    video.addEventListener("pause", onPause);
+    ["play", "pause", "ended"].forEach((event) => ad?.addEventListener(event, syncCurrentStatus));
     highlightCleanup = () => {
-      events.forEach((event) => video.removeEventListener(event, updateHighlight));
-      ["play", "pause", "ended"].forEach((event) => ad?.removeEventListener(event, updateHighlight));
+      video.removeEventListener("timeupdate", updateHighlight);
+      video.removeEventListener("seeked", updateHighlight);
+      video.removeEventListener("loadedmetadata", syncCurrentStatus);
+      video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("pause", onPause);
+      ["play", "pause", "ended"].forEach((event) => ad?.removeEventListener(event, syncCurrentStatus));
     };
-    updateHighlight();
+    syncCurrentStatus();
   }
 
   function ensurePanel() {
@@ -107,12 +193,18 @@
       .controls button { flex: 1; }
       ol { margin: 0; padding: 0 12px 4px; list-style: none; }
       .segment-list { padding-top: 12px; }
+      .segment-list-wrap { position: relative; }
+      .segment-list-wrap.watched .segment-list { pointer-events: none; }
       li { margin: 0 0 8px; padding: 10px; border: 1px solid #30363d; border-radius: 10px; background: #191e24; }
+      .watched-overlay { position: absolute; z-index: 1; inset: 12px 12px 12px; display: grid; place-items: center; border-radius: 10px; background: #000b; color: #fff; font-size: 18px; font-weight: 800; }
       li.active { border-color: #21b66f; background: #123323; }
       .row { display: flex; align-items: start; gap: 8px; }
       .item-main { flex: 1; min-width: 0; }
       .title { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
       .meta { margin-top: 3px; color: #aeb7c2; font-size: 12px; }
+      .timestamps { display: flex; align-items: center; gap: 5px; }
+      .timestamp { padding: 1px 4px; border: 0; background: transparent; color: #aeb7c2; font-size: 12px; text-decoration: underline; }
+      .timestamp:hover { background: #303944; color: #fff; }
       .state { color: #61d897; }
       .segment-list li:not(.active) .state { display: none; }
       .error { color: #ff8989; }
@@ -134,6 +226,7 @@
     await loadSettings();
     if (!ensurePanel()) return;
     if (shadow.querySelector(".panel")) {
+      promptCleanup();
       highlightCleanup();
       host.remove();
       host = null;
@@ -175,26 +268,39 @@
       ]));
     }
 
-    const currentVideoKey = isSoop ? core.parseSoopUrl(location.href)?.videoKey : null;
-    const currentItems = items.map((item, index) => ({ item, index })).filter(({ item }) => item.videoKey === currentVideoKey);
+    const currentItems = currentSoopItems();
     if (isSoop) {
       if (!currentItems.length) panel.append(create("div", { className: "empty", text: note || "발견한 SOOP 구간이 없습니다." }));
       else {
         const list = create("ol", { className: "segment-list" });
+        const watched = currentItems.some(({ item }) => item.watched);
+        if (watched) list.setAttribute("inert", "");
         let segmentNumber = 0;
         const highlighted = highlightedIndex();
         currentItems.forEach(({ item, index }) => {
           const validRange = item.status !== "error" && Number.isFinite(item.start) && Number.isFinite(item.end);
+          const blocked = item.status === "error" || item.watched;
           const number = validRange ? `${++segmentNumber}. ` : "";
           const details = [create("div", { className: "title", text: `${number}${item.title || ""}`.trim() })];
-          if (validRange) details.push(create("div", { className: "meta", text: timeText(item) }));
-          details.push(create("div", { className: item.status === "error" ? "meta error" : "meta state", text: statusText(item) }));
-          const play = create("button", { type: "button", text: "재생", onclick: () => playItem(index), disabled: item.status === "error" ? "" : null });
-          list.append(create("li", { className: index === highlighted ? "active" : "", "data-item-index": index }, [
-            create("div", { className: "row" }, [create("div", { className: "item-main" }, details), play])
+          if (validRange) details.push(create("div", { className: "meta timestamps" }, [
+            create("button", { type: "button", className: "timestamp", text: `(${core.formatTime(item.start)})`, "aria-label": `${core.formatTime(item.start)}부터 재생`, onclick: () => startPlayback(index, item.start), disabled: blocked ? "" : null }),
+            create("span", { text: "~" }),
+            create("button", { type: "button", className: "timestamp", text: `(${core.formatTime(item.end)})`, "aria-label": `${core.formatTime(item.end)}부터 재생`, onclick: () => startPlayback(index, item.end), disabled: blocked ? "" : null })
           ]));
+          details.push(create("div", { className: item.status === "error" ? "meta error" : "meta state", text: statusText(item) }));
+          const play = create("button", { type: "button", text: "재생", onclick: () => playItem(index), disabled: blocked ? "" : null });
+          const row = create("div", { className: "row" }, [create("div", { className: "item-main" }, details), play]);
+          list.append(create("li", {
+            className: index === highlighted ? "active" : "",
+            "data-item-index": index
+          }, [row]));
         });
-        panel.append(list);
+        const listWrap = create("div", {
+          className: `segment-list-wrap${watched ? " watched" : ""}`,
+          "aria-label": watched ? "구간 전체 봤" : null
+        }, [list]);
+        if (watched) listWrap.append(create("div", { className: "watched-overlay", text: "- 봤 -" }));
+        panel.append(listWrap);
       }
     } else if (!items.length) panel.append(create("div", { className: "empty", text: note || "발견한 SOOP 영상이 없습니다." }));
     else {
@@ -213,16 +319,27 @@
 
     if (isSoop && currentItems.length) {
       const paused = currentVideo()?.paused ?? items[activeIndex]?.status === "paused";
+      const playableIndices = currentItems.filter(({ item }) => core.isPlayableRange(item)).map(({ index }) => index);
+      const currentPosition = playableIndices.indexOf(activeIndex);
       panel.append(create("div", { className: "controls" }, [
-        create("button", { type: "button", text: "이전", onclick: () => move(-1), disabled: activeIndex <= 0 ? "" : null }),
-        create("button", { type: "button", text: paused ? "이어서 재생" : "일시정지", onclick: togglePauseCurrent }),
-        create("button", { type: "button", text: "다음", onclick: () => move(1), disabled: activeIndex >= items.length - 1 ? "" : null })
+        create("button", { type: "button", text: "이전", onclick: () => move(-1), disabled: currentPosition <= 0 ? "" : null }),
+        create("button", { type: "button", text: paused ? "이어서 재생" : "일시정지", onclick: togglePauseCurrent, "data-playback-toggle": "" }),
+        create("button", { type: "button", text: "다음", onclick: () => move(1), disabled: currentPosition >= playableIndices.length - 1 ? "" : null })
       ]));
     }
 
-    panel.append(create("footer", { text: note || (isCafe ? "현재 로드된 본문·댓글만 검색합니다." : "광고 종료 후 본편 #video를 제어합니다.") }));
+    if (isCafe) panel.append(create("footer", { text: note || "현재 로드된 본문·댓글만 검색합니다." }));
     shadow.append(panel);
     if (isSoop) watchHighlight();
+  }
+
+  function scheduleRender() {
+    if (!host) return;
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => {
+      renderTimer = 0;
+      if (host) render();
+    }, 50);
   }
 
   function closestContext(element, scopeElement) {
@@ -291,13 +408,35 @@
     render(items.length ? `${items.length}개 항목 · 현재 로드된 범위` : "선택한 범위에서 SOOP 영상을 찾지 못했습니다.");
   }
 
-  function soopCommentItems(current) {
-    return [...document.querySelectorAll("[id^='txtComment']")].flatMap((comment) => {
-      const author = comment.closest("li")?.querySelector("[id^='comment_']")?.textContent?.replace(/\s+/g, " ").trim() || "";
+  function soopPublisher() {
+    const container = document.querySelector("#player_area .column[number='1'], #webplayer_contents .column[number='1']");
+    const link = container?.querySelector(".thumbnail_box a[href*='/station/']")
+      || document.querySelector(".author_inner a[href*='/station/']");
+    if (!link) return null;
+    try {
+      const match = new URL(link.href).pathname.match(/^\/station\/([^/]+)\/?$/i);
+      if (!match) return null;
+      return { id: decodeURIComponent(match[1]), name: (container || link.closest(".author_inner"))
+        ?.querySelector(".nickname, .nick")?.textContent || "" };
+    } catch {
+      return null;
+    }
+  }
+
+  function soopCommentAuthor(comment) {
+    return comment.closest("li")?.querySelector("[id^='comment_']")?.textContent?.replace(/\s+/g, " ").trim() || "";
+  }
+
+  function soopCommentItems(current, publisher) {
+    const comments = [...document.querySelectorAll("[id^='txtComment']")]
+      .map((comment) => ({ comment, author: soopCommentAuthor(comment) }))
+      .filter(({ author }) => core.sameSoopAuthor(publisher, author));
+    const watched = comments.some(({ comment }) => core.hasWatchedMarker(comment.textContent));
+    return comments.flatMap(({ comment, author }) => {
       return core.parseRanges(comment.textContent).map((range) => ({
         id: crypto.randomUUID(), url: current.url, videoKey: current.videoKey,
         title: range.title, start: range.start, end: range.end,
-        source: "SOOP 댓글", author,
+        source: "SOOP 댓글", author, watched,
         status: range.error ? "error" : "waiting",
         error: range.error || ""
       }));
@@ -305,14 +444,16 @@
   }
 
   function commentState() {
+    const publisher = soopPublisher();
+    if (!publisher) return null;
     const area = document.querySelector("#commentHighlight, .commentHighlight");
     if (!area) return null;
     const comments = [...area.querySelectorAll("[id^='txtComment']")];
-    const countMatch = document.querySelector("#cmmtOpener")?.textContent?.match(/[\d,]+/);
+    const countMatch = document.querySelector("#cmmtOpener, #catchCommentWrap .total b")?.textContent?.match(/[\d,]+/);
     const expectedCount = countMatch ? Number(countMatch[0].replaceAll(",", "")) : null;
     if (!comments.length && expectedCount !== 0) return null;
-    return comments
-      .map((comment) => `${comment.id}:${comment.textContent}`).join("\n");
+    return `${publisher.id}:${publisher.name}\n${comments
+      .map((comment) => `${comment.id}:${soopCommentAuthor(comment)}:${comment.textContent}`).join("\n")}`;
   }
 
   function watchSoopComments() {
@@ -328,52 +469,57 @@
   }
 
   async function loadState(show = false) {
-    const state = await chrome.storage.local.get(["items", "activeIndex"]);
+    const state = await chrome.storage.local.get(["items", "activeIndex", "activeVideoKey"]);
+    const current = isSoop ? core.parseSoopUrl(location.href) : null;
     items = Array.isArray(state.items) ? state.items : [];
-    activeIndex = Number.isInteger(state.activeIndex) ? state.activeIndex : -1;
+    activeIndex = Number.isInteger(state.activeIndex)
+      && (!isSoop || state.activeVideoKey === current?.videoKey) ? state.activeIndex : -1;
 
     if (isSoop) {
-      const current = core.parseSoopUrl(location.href);
       let matching = -1;
       if (current) {
+        const publisher = soopPublisher();
         const keyOf = (item) => item.status === "error"
           ? `${core.itemKey(item)}|error|${item.author}|${item.title}`
           : core.itemKey(item);
-        const selectedKey = items[activeIndex]?.videoKey === current.videoKey ? keyOf(items[activeIndex]) : null;
-        const comments = soopCommentItems(current);
+        const selected = items[activeIndex];
+        const selectedKey = selected?.videoKey === current.videoKey && selected.source === "SOOP 댓글"
+          && core.sameSoopAuthor(publisher, selected.author) ? keyOf(selected) : null;
+        items = items.filter((item) => item.videoKey !== current.videoKey || item.source !== "SOOP 댓글"
+          || core.sameSoopAuthor(publisher, item.author));
+        const comments = soopCommentItems(current, publisher);
         const commentsLoaded = commentState() !== null;
         const previousComments = new Map(items
           .filter((item) => item.videoKey === current.videoKey && item.source === "SOOP 댓글")
           .map((item) => [keyOf(item), item]));
+        items = items.filter((item) => item.videoKey !== current.videoKey || item.source !== "현재 SOOP 페이지");
         if (commentsLoaded) {
-          items = items.filter((item) => item.videoKey !== current.videoKey
-            || (item.source !== "SOOP 댓글" && item.source !== "현재 SOOP 페이지"));
-        }
-        const unique = new Map(items.map((item) => [keyOf(item), item]));
-        if (commentsLoaded) comments.forEach((item) => {
-          if (!unique.has(keyOf(item))) unique.set(keyOf(item), previousComments.get(keyOf(item)) || item);
-        });
-        items = [...unique.values()];
-        matching = selectedKey ? items.findIndex((item) => keyOf(item) === selectedKey) : -1;
-        if (matching < 0 && commentsLoaded && comments.length) {
-          matching = items.findIndex((item) => keyOf(item) === keyOf(comments[0]));
-        }
-        if (matching < 0) matching = items.findIndex((item) => item.videoKey === current.videoKey);
-        if (matching < 0) {
-          matching = items.length;
-          items.push({
-            id: crypto.randomUUID(), url: current.url, videoKey: current.videoKey, title: "",
-            start: current.start, end: null, source: "현재 SOOP 페이지", author: "",
-            status: current.start === null ? "unspecified" : "waiting", error: ""
+          items = items.filter((item) => item.videoKey !== current.videoKey || item.source !== "SOOP 댓글");
+          const uniqueComments = new Map();
+          comments.forEach((item) => {
+            if (!uniqueComments.has(keyOf(item))) {
+              const previous = previousComments.get(keyOf(item));
+              uniqueComments.set(keyOf(item), previous ? { ...previous, watched: item.watched } : item);
+            }
           });
+          items.push(...uniqueComments.values());
         }
+        matching = selectedKey ? items.findIndex((item) => item.videoKey === current.videoKey
+          && item.source === "SOOP 댓글" && keyOf(item) === selectedKey) : -1;
+        if (matching < 0 || !core.isPlayableRange(items[matching])) matching = items.findIndex((item) => item.videoKey === current.videoKey
+          && item.source === "SOOP 댓글" && core.isPlayableRange(item));
         activeIndex = matching;
-        await chrome.storage.local.set({ items, activeIndex });
+        await chrome.storage.local.set({ items, activeIndex, activeVideoKey: current.videoKey });
+        show = show || settings.autoOpenPanel;
       }
-      if (matching >= 0) show = show || settings.autoOpenPanel;
     }
 
     if (show && ensurePanel()) render();
+    const first = currentSoopItems().find(({ item }) => core.isPlayableRange(item));
+    if (settings.autoPlayFirst && current && first && autoPlayedVideoKey !== current.videoKey) {
+      autoPlayedVideoKey = current.videoKey;
+      startPlayback(first.index);
+    }
   }
 
   async function saveStatus(index, status, error = "") {
@@ -385,7 +531,7 @@
 
   function playItem(index) {
     const item = items[index];
-    if (!item || item.status === "error") return;
+    if (!item || item.status === "error" || item.watched) return;
     const current = core.parseSoopUrl(location.href);
     if (isSoop && current?.videoKey === item.videoKey) startPlayback(index);
     else chrome.runtime.sendMessage({
@@ -396,78 +542,108 @@
     });
   }
 
-  async function startPlayback(index) {
+  function startPlayback(index, startAt = items[index]?.start ?? 0) {
+    if (!items[index] || items[index].status === "error" || items[index].watched) return;
+    promptCleanup();
     mediaCleanup();
     const token = ++playerToken;
+    const item = items[index];
+    const start = startAt ?? 0;
     activeIndex = index;
-    await chrome.storage.local.set({ activeIndex });
-    await saveStatus(index, "preparing");
+    void chrome.storage.local.set({ activeIndex, activeVideoKey: item.videoKey || null });
+    void saveStatus(index, "preparing");
 
     const deadline = Date.now() + 60000;
-    const poll = setInterval(async () => {
-      if (token !== playerToken) return clearInterval(poll);
+    let poll;
+    const tryStart = () => {
+      if (token !== playerToken) {
+        if (poll) clearInterval(poll);
+        return true;
+      }
       const ad = document.querySelector("#adVideo");
       const adActive = ad && !ad.paused && !ad.ended && ad.readyState >= 2;
-      if (adActive) return saveStatus(index, "ad");
+      if (adActive) {
+        void saveStatus(index, "ad");
+        return false;
+      }
 
-      const video = document.querySelector("video#video") || [...document.querySelectorAll("video")].find((node) => node.id !== "adVideo");
+      const video = currentVideo();
       if (!video || video.readyState < 1) {
         if (Date.now() > deadline) {
-          clearInterval(poll);
-          saveStatus(index, "error", "본편을 60초 안에 찾지 못했습니다.");
+          if (poll) clearInterval(poll);
+          void saveStatus(index, "error", "본편을 60초 안에 찾지 못했습니다.");
+          return true;
         }
-        return;
+        return false;
       }
-      clearInterval(poll);
-      attachMedia(video, index);
-    }, 500);
+      const duration = video.duration;
+      const durationReady = Number.isFinite(duration) && duration > 0;
+      const fitsDuration = durationReady && start < duration
+        && (item?.end === null || item?.end <= duration);
+      if (!fitsDuration) {
+        void saveStatus(index, "preparing");
+        if (Date.now() > deadline) {
+          if (poll) clearInterval(poll);
+          void saveStatus(index, "error", durationReady
+            ? `영상 길이(${core.formatTime(duration)})를 벗어난 구간입니다.`
+            : "본편 길이를 60초 안에 확인하지 못했습니다.");
+          return true;
+        }
+        return false;
+      }
+      if (poll) clearInterval(poll);
+      void attachMedia(video, index, startAt);
+      return true;
+    };
+    if (tryStart()) return;
+    poll = setInterval(tryStart, 500);
     mediaCleanup = () => clearInterval(poll);
   }
 
-  async function attachMedia(video, index) {
+  async function attachMedia(video, index, startAt) {
     const item = items[index];
-    const start = item.start ?? 0;
-    if ((Number.isFinite(video.duration) && start >= video.duration) || (item.end !== null && Number.isFinite(video.duration) && item.end > video.duration)) {
-      return saveStatus(index, "error", `영상 길이(${core.formatTime(video.duration)})를 벗어난 구간입니다.`);
-    }
+    const start = startAt ?? 0;
 
-    let completed = false;
-    let stoppedAtEnd = false;
+    const currentEntries = currentSoopItems();
+    const lastEnd = currentEntries.filter(({ item }) => core.isPlayableRange(item)).at(-1)?.item.end ?? null;
+    const pauseAtEnd = settings.pauseAtEnd;
+    const stopAt = settingsApi.stopAt(settings, item.end, lastEnd);
+    const nextIndex = core.nextPlayableIndex(currentEntries, index);
+    let seekReady = false;
+    let stopped = false;
     const onTime = () => {
-      if (!completed && item.end !== null && video.currentTime >= item.end - 0.05) {
-        completed = true;
+      if (!seekReady) {
+        if (!Number.isFinite(video.currentTime) || Math.abs(video.currentTime - start) > 0.25) return;
+        seekReady = true;
+      }
+      if (items[index]?.status !== "completed" && item.end !== null && video.currentTime >= item.end - 0.05) {
         saveStatus(index, "completed");
-        const action = settingsApi.endAction(settings, index < items.length - 1);
-        if (action === "continue") return;
-        stoppedAtEnd = true;
+      }
+      if (!stopped && stopAt !== null && video.currentTime >= stopAt - 0.05) {
+        stopped = true;
         video.pause();
-        if (action === "next") playItem(index + 1);
+        if (pauseAtEnd && nextIndex >= 0) showNextPrompt(() => startPlayback(nextIndex));
       }
     };
-    const onPlaying = () => saveStatus(index, "playing");
-    const onWaiting = () => saveStatus(index, "preparing");
-    const onPause = () => { if (!stoppedAtEnd) saveStatus(index, "paused"); };
     video.addEventListener("timeupdate", onTime);
-    video.addEventListener("playing", onPlaying);
-    video.addEventListener("waiting", onWaiting);
-    video.addEventListener("pause", onPause);
     mediaCleanup = () => {
       video.removeEventListener("timeupdate", onTime);
-      video.removeEventListener("playing", onPlaying);
-      video.removeEventListener("waiting", onWaiting);
-      video.removeEventListener("pause", onPause);
     };
 
     try {
       video.currentTime = start;
       await video.play();
+      if (Math.abs(video.currentTime - start) > 0.25) {
+        video.currentTime = start;
+        await video.play();
+      }
     } catch {
       await saveStatus(index, "paused", "브라우저가 자동 재생을 막았습니다. SOOP 재생 버튼 후 다시 누르세요.");
     }
   }
 
   function currentVideo() {
-    return document.querySelector("video#video") || [...document.querySelectorAll("video")].find((node) => node.id !== "adVideo");
+    return document.querySelector("video#video, video#video_p");
   }
 
   async function togglePauseCurrent() {
@@ -475,21 +651,25 @@
     if (!video) return;
     if (!video.paused) {
       video.pause();
-      render();
+      syncMediaStatus("paused");
       return;
     }
     try {
       await video.play();
-      render();
+      syncMediaStatus("playing");
     } catch {
-      if (activeIndex >= 0) await saveStatus(activeIndex, "paused", "브라우저가 재생을 막았습니다. SOOP 재생 버튼 후 다시 누르세요.");
-      render();
+      const index = highlightedIndex();
+      if (index >= 0) await saveStatus(index, "paused", "브라우저가 재생을 막았습니다. SOOP 재생 버튼 후 다시 누르세요.");
+      updateHighlight();
     }
   }
 
   function move(direction) {
-    const index = activeIndex + direction;
-    if (index >= 0 && index < items.length) playItem(index);
+    const indices = currentSoopItems()
+      .filter(({ item }) => core.isPlayableRange(item))
+      .map(({ index }) => index);
+    const index = indices[indices.indexOf(activeIndex) + direction];
+    if (Number.isInteger(index)) playItem(index);
   }
 
   chrome.runtime.onMessage.addListener((message) => {
@@ -504,8 +684,11 @@
     }
     if (!host) return;
     if (changes.items) items = changes.items.newValue || [];
-    if (changes.activeIndex) activeIndex = changes.activeIndex.newValue ?? -1;
-    render();
+    const currentKey = isSoop ? core.parseSoopUrl(location.href)?.videoKey : null;
+    const selectionChanged = changes.activeIndex
+      && (!isSoop || changes.activeVideoKey?.newValue === currentKey);
+    if (selectionChanged) activeIndex = changes.activeIndex.newValue ?? -1;
+    if (changes.items || selectionChanged) scheduleRender();
   });
 
   if (isSoop && window === window.top) loadSettings().then(async () => {

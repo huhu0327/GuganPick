@@ -4,23 +4,26 @@ const settingsApi = globalThis.GuganPickSettings;
 const form = document.querySelector("#settings-form");
 const openPanelButton = document.querySelector("#open-panel");
 const status = document.querySelector("#status");
+let currentSettings = settingsApi.normalize();
 
 function readForm() {
   return {
-    autoAdvance: form.autoAdvance.checked,
+    ...currentSettings,
+    autoPlayFirst: form.autoPlayFirst.checked,
     pauseAtEnd: form.pauseAtEnd.checked,
-    scanScope: form.scanScope.value,
+    pauseAtLast: form.pauseAtLast.checked,
     openInNewTab: form.openInNewTab.checked,
     autoOpenPanel: form.autoOpenPanel.checked
   };
 }
 
 function writeForm(settings) {
-  form.autoAdvance.checked = settings.autoAdvance;
-  form.pauseAtEnd.checked = settings.pauseAtEnd;
-  form.scanScope.value = settings.scanScope;
-  form.openInNewTab.checked = settings.openInNewTab;
-  form.autoOpenPanel.checked = settings.autoOpenPanel;
+  currentSettings = settingsApi.normalize(settings);
+  form.autoPlayFirst.checked = currentSettings.autoPlayFirst;
+  form.pauseAtEnd.checked = currentSettings.pauseAtEnd;
+  form.pauseAtLast.checked = currentSettings.pauseAtLast;
+  form.openInNewTab.checked = currentSettings.openInNewTab;
+  form.autoOpenPanel.checked = currentSettings.autoOpenPanel;
 }
 
 function showStatus(message, state = "") {
@@ -30,7 +33,8 @@ function showStatus(message, state = "") {
 
 async function saveSettings() {
   try {
-    await chrome.storage.local.set({ settings: readForm() });
+    currentSettings = readForm();
+    await chrome.storage.local.set({ settings: currentSettings });
     showStatus("저장됨", "success");
   } catch {
     showStatus("설정을 저장하지 못했습니다. 다시 변경해 보세요.", "error");
